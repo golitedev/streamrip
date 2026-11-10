@@ -23,9 +23,6 @@ COPYRIGHT = "\u00a9"
 logger = logging.getLogger("streamrip")
 
 
-genre_clean = re.compile(r"([^\u2192\/]+)")
-
-
 @dataclass(slots=True)
 class AlbumInfo:
     id: str
@@ -98,13 +95,11 @@ class AlbumMetadata:
             text(resp.get("title")) or "Unknown Album", resp.get("version")
         )
         tracktotal = resp.get("tracks_count", 1)
-        genre = resp.get("genres_list") or [safe_get(resp, "genre", "name")]
-        genres = unique_names(
-            part
-            for value in genre
-            if isinstance(value, str)
-            for part in genre_clean.findall(value)
-        )
+        # Qobuz's genres_list hierarchy is in French even when genre.name is
+        # English. Keep the localized primary name (upstream fix #942), without
+        # splitting a single genre such as Hip-Hop/Rap or falling back to French.
+        genre = text(safe_get(resp, "genre", "name"))
+        genres = [genre] if genre else []
         originaldate = release_date(resp.get("release_date_original"))
         date = (
             release_date(resp.get("release_date_download"))

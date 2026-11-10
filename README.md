@@ -37,7 +37,10 @@ The FLAC writer also embeds these fields when Qobuz supplies them:
   contributor roles can be interpreted reliably. Instruments/vocal roles are included in
   `PERFORMER` values. Names are not split on commas; ambiguous free-text credits
   are omitted rather than guessed and can be inspected with debug logging.
-- `GENRE` as separate values using Qobuz's genre hierarchy.
+- `GENRE` from Qobuz's primary `genre.name`, preserving the upstream fix for
+  French genres. The `genres_list` hierarchy can be French and is not used,
+  including as a fallback when the primary name is absent. A name such as
+  `Hip-Hop/Rap` is retained as one genre. The writer still supports multiple values.
 - `ORIGINALDATE` from `release_date_original`. `DATE` uses Qobuz's
   `release_date_download`, then `release_date_stream`, then `release_date`, with
   the original date as a fallback. Dates reflect the supplied catalog data;
