@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from .album import AlbumMetadata
+from .qobuz import (
+    artist_credit,
+    contributor_credits,
+    structured_artists,
+    text,
+    unique_names,
+    with_version,
+)
 from .util import safe_get, typed
 
 logger = logging.getLogger("streamrip")
@@ -33,39 +41,54 @@ class TrackMetadata:
     composer: str | None
     isrc: str | None = None
     lyrics: str | None = ""
+    artists: list[str] = field(default_factory=list)
+    credits: dict[str, list[str]] = field(default_factory=dict)
+    qobuz_track_id: str | None = None
+    itunesadvisory: str | None = None
 
     @classmethod
     def from_qobuz(cls, album: AlbumMetadata, resp: dict) -> TrackMetadata | None:
         title = typed(resp["title"].strip(), str)
-        isrc = typed(resp["isrc"], str)
+        isrc = text(resp.get("isrc"))
         streamable = typed(resp.get("streamable", False), bool)
 
         if not streamable:
             return None
 
-        version = typed(resp.get("version"), str | None)
-        work = typed(resp.get("work"), str | None)
-        if version is not None and version not in title:
-            title = f"{title} ({version})"
+        title = with_version(title, resp.get("version"))
+        work = text(resp.get("work"))
         if work is not None and work not in title:
             title = f"{work}: {title}"
 
-        composer = typed(resp.get("composer", {}).get("name"), str | None)
+        composer = text(safe_get(resp, "composer", "name"))
         tracknumber = typed(resp.get("track_number", 1), int)
         discnumber = typed(resp.get("media_number", 1), int)
-        artist = typed(
-            safe_get(
-                resp,
-                "performer",
-                "name",
-            ),
-            str,
+        primary = text(safe_get(resp, "performer", "name"))
+        main, featured = structured_artists(resp.get("artists"))
+        credits = contributor_credits(
+            resp.get("performers"),
+            [primary, composer, *album.albumartists, *main, *featured],
         )
+        parsed_main = credits.pop("main", [])
+        parsed_featured = credits.pop("featured", [])
+        main = main or parsed_main
+        featured = featured or parsed_featured
+        if (
+            not main
+            and primary
+            and primary.casefold() not in {n.casefold() for n in featured}
+        ):
+            main = [primary]
+        artists = unique_names([*main, *featured])
+        artist = artist_credit(main, featured) or primary or album.albumartist
+        if not credits.get("composer") and composer:
+            credits["composer"] = [composer]
+        composer = ", ".join(credits.get("composer", [])) or None
         track_id = str(resp["id"])
         bit_depth = typed(resp.get("maximum_bit_depth"), int | None)
         sampling_rate = typed(resp.get("maximum_sampling_rate"), int | float | None)
-        # Is the info included?
-        explicit = False
+        warning = resp.get("parental_warning")
+        explicit = warning is True
 
         info = TrackInfo(
             id=track_id,
@@ -84,6 +107,16 @@ class TrackMetadata:
             discnumber=discnumber,
             composer=composer,
             isrc=isrc,
+            artists=artists,
+            credits=credits,
+            qobuz_track_id=track_id,
+            # False means no advisory; Qobuz does not establish an edited clean
+            # version, so do not invent ITUNESADVISORY=2.
+            itunesadvisory="1"
+            if warning is True
+            else "0"
+            if warning is False
+            else None,
         )
 
     @classmethod

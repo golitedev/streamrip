@@ -19,6 +19,44 @@ A scriptable stream downloader for Qobuz, Tidal, Deezer and SoundCloud.
 - Highly customizable through the config file
 - Integration with `youtube-dl`
 
+### Qobuz metadata in this checkout
+
+Qobuz FLAC downloads retain the album's edition/version in `ALBUM` and the folder
+name, without appending a version that is already present. Track versions and
+classical work title prefixes are retained as well.
+
+The FLAC writer also embeds these fields when Qobuz supplies them:
+
+- `LABEL` and `BARCODE` (from `upc`, retaining leading zeros).
+- `ARTISTS` and `ALBUMARTISTS` as separate Vorbis values, while `ARTIST` and
+  `ALBUMARTIST` contain display credits. Explicit main/featured roles determine
+  the display credit, including `feat.` where applicable. Producers, composers
+  and other contributors are not promoted to performing artists.
+- Individual values for `COMPOSER`, `LYRICIST`, `WRITER`, `PRODUCER`, `ARRANGER`,
+  `CONDUCTOR`, `REMIXER`, `MIXER`, `ENGINEER`, `DIRECTOR` and `PERFORMER`, where
+  contributor roles can be interpreted reliably. Instruments/vocal roles are included in
+  `PERFORMER` values. Names are not split on commas; ambiguous free-text credits
+  are omitted rather than guessed and can be inspected with debug logging.
+- `GENRE` as separate values using Qobuz's genre hierarchy.
+- `ORIGINALDATE` from `release_date_original`. `DATE` uses Qobuz's
+  `release_date_download`, then `release_date_stream`, then `release_date`, with
+  the original date as a fallback. Dates reflect the supplied catalog data;
+  a remaster year is not inferred from an edition title. `YEAR` follows `DATE`.
+- `WORK`, separately from the existing work prefix in `TITLE`.
+- `ITUNESADVISORY=1` for an explicit track and `0` when Qobuz supplies a false
+  parental warning. A missing flag is omitted; false does not establish an edited
+  clean version (`2`). The track's explicit flag also drives filename formatting.
+- `QOBUZ_ALBUM_ID` and `QOBUZ_TRACK_ID` as custom source identifiers. The album ID
+  is the public `id` used in the Qobuz album URL, not the separate numeric
+  `qobuz_id`. The `{id}` album folder placeholder uses this public ID too.
+
+Existing ISRC support is retained, and a missing ISRC no longer prevents tagging
+a Qobuz track. The additional tag mappings above apply to FLAC; they do not add
+these new fields to MP3 or AAC output. No external metadata provider is queried.
+
+Field names follow the [MusicBrainz Picard Vorbis mappings](https://picard-docs.musicbrainz.org/en/latest/appendices/tag_mapping.html),
+apart from the explicitly named Qobuz custom IDs and the iTunes advisory convention.
+
 ## Installation
 
 First, ensure [Python](https://www.python.org/downloads/) (version 3.10 or greater) and [pip](https://pip.pypa.io/en/stable/installing/) are installed. Then install `ffmpeg`. You may choose not to install this, but some functionality will be limited.

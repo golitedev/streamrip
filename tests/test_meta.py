@@ -12,7 +12,7 @@ with open("tests/qobuz_track_resp.json") as f:
 def test_album_metadata_qobuz():
     m = AlbumMetadata.from_qobuz(qobuz_album_resp)
     info = m.info
-    assert info.id == "19512572"
+    assert info.id == "0603497941032"
     assert info.quality == 3
     assert info.container == "FLAC"
     assert info.label == "Rhino - Warner Records"
@@ -21,7 +21,7 @@ def test_album_metadata_qobuz():
     assert info.bit_depth == 24
     assert info.booklets is None
 
-    assert m.album == "Rumours"
+    assert m.album == "Rumours (2001 Remaster)"
     assert m.albumartist == "Fleetwood Mac"
     assert m.year == "1977"
     assert "Pop" in m.genre

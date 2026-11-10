@@ -92,6 +92,22 @@ METADATA_TYPES = (
 
 
 FLAC_KEY = {v: v.upper() for v in METADATA_TYPES}
+FLAC_KEY.update(
+    {
+        v: v.upper()
+        for v in (
+            "label",
+            "barcode",
+            "originaldate",
+            "work",
+            "artists",
+            "albumartists",
+            "qobuz_album_id",
+            "qobuz_track_id",
+            "itunesadvisory",
+        )
+    }
+)
 MP4_KEY = dict(zip(METADATA_TYPES, MP4_KEYS))
 MP3_KEY = dict(zip(METADATA_TYPES, MP3_KEYS))
 
@@ -137,7 +153,12 @@ class Container(Enum):
                 }:
                     tag = f"{int(tag):02}"
 
-                out.append((v, str(tag)))
+                out.append((v, tag if isinstance(tag, list) else str(tag)))
+        for key, values in meta.credits.items():
+            if values:
+                # Replace the display composer with individual credited names.
+                out = [(k, v) for k, v in out if k != key.upper()]
+                out.append((key.upper(), values))
         return out
 
     def _tag_mp3(self, meta: TrackMetadata):
@@ -173,8 +194,11 @@ class Container(Enum):
                 out.append((v, text))
         return out
 
-    def _attr_from_meta(self, meta: TrackMetadata, attr: str) -> str | None:
-        # TODO: verify this works
+    def _attr_from_meta(self, meta: TrackMetadata, attr: str) -> str | list[str] | None:
+        if attr == "label":
+            return meta.album.info.label
+        if attr == "work":
+            return meta.info.work
         in_trackmetadata = {
             "title",
             "album",
@@ -184,6 +208,9 @@ class Container(Enum):
             "composer",
             "isrc",
             "lyrics",
+            "artists",
+            "qobuz_track_id",
+            "itunesadvisory",
         }
         if attr in in_trackmetadata:
             if attr == "album":
@@ -191,16 +218,18 @@ class Container(Enum):
             val = getattr(meta, attr)
             if val is None:
                 return None
-            return str(val)
+            return val if isinstance(val, list) else str(val)
         else:
             if attr == "genre":
+                if meta.album.qobuz_album_id is not None:
+                    return meta.album.genre
                 return meta.album.get_genres()
             elif attr == "copyright":
                 return meta.album.get_copyright()
             val = getattr(meta.album, attr)
             if val is None:
                 return None
-            return str(val)
+            return val if isinstance(val, list) else str(val)
 
     def tag_audio(self, audio, tags: list[tuple]):
         for k, v in tags:

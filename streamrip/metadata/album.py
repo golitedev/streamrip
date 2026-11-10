@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from ..filepath_utils import clean_filename, clean_filepath
 from .covers import Covers
+from .qobuz import (
+    artist_credit,
+    release_date,
+    structured_artists,
+    text,
+    unique_names,
+    with_version,
+)
 from .util import get_quality_id, safe_get, typed
 
 PHON_COPYRIGHT = "\u2117"
@@ -50,6 +58,10 @@ class AlbumMetadata:
     grouping: str | None = None
     lyrics: str | None = None
     purchase_date: str | None = None
+    albumartists: list[str] = field(default_factory=list)
+    barcode: str | None = None
+    originaldate: str | None = None
+    qobuz_album_id: str | None = None
 
     def get_genres(self) -> str:
         return ", ".join(self.genre)
@@ -82,45 +94,67 @@ class AlbumMetadata:
 
     @classmethod
     def from_qobuz(cls, resp: dict) -> AlbumMetadata:
-        album = resp.get("title", "Unknown Album")
+        album = with_version(
+            text(resp.get("title")) or "Unknown Album", resp.get("version")
+        )
         tracktotal = resp.get("tracks_count", 1)
-        genre = [safe_get(resp, "genre", "name")] or resp.get("genre") or []
-        genres = list(set(genre_clean.findall("/".join(genre))))
-        date = resp.get("release_date_original") or resp.get("release_date")
+        genre = resp.get("genres_list") or [safe_get(resp, "genre", "name")]
+        genres = unique_names(
+            part
+            for value in genre
+            if isinstance(value, str)
+            for part in genre_clean.findall(value)
+        )
+        originaldate = release_date(resp.get("release_date_original"))
+        date = (
+            release_date(resp.get("release_date_download"))
+            or release_date(resp.get("release_date_stream"))
+            or release_date(resp.get("release_date"))
+            or originaldate
+        )
         year = date[:4] if date is not None else "Unknown"
 
         _copyright = resp.get("copyright", "")
 
-        if artists := resp.get("artists"):
-            albumartist = ", ".join(a["name"] for a in artists)
-        else:
-            albumartist = typed(safe_get(resp, "artist", "name"), str)
+        main, featured = structured_artists(resp.get("artists"))
+        if not main:
+            primary = text(safe_get(resp, "artist", "name"))
+            main = (
+                [primary]
+                if primary
+                and primary.casefold() not in {n.casefold() for n in featured}
+                else []
+            )
+        albumartists = unique_names([*main, *featured])
+        albumartist = artist_credit(main, featured) or "Unknown Artist"
 
-        albumcomposer = typed(safe_get(resp, "composer", "name", default=""), str)
+        albumcomposer = text(safe_get(resp, "composer", "name"))
         _label = resp.get("label")
         if isinstance(_label, dict):
-            _label = _label["name"]
-        label = typed(_label or "", str)
-        description = typed(resp.get("description", ""), str)
-        disctotal = typed(
-            max(
-                track.get("media_number", 1)
-                for track in safe_get(resp, "tracks", "items", default=[{}])  # type: ignore
-            )
-            or 1,
-            int,
+            _label = _label.get("name")
+        label = text(_label)
+        description = text(resp.get("description")) or ""
+        disctotal = max(
+            [
+                resp.get("media_count") or 1,
+                *[
+                    track.get("media_number") or 1
+                    for track in safe_get(resp, "tracks", "items", default=[]) or []
+                ],
+            ]
         )
-        explicit = typed(resp.get("parental_warning", False), bool)
+        explicit = resp.get("parental_warning") is True
 
         # Non-embedded information
         cover_urls = Covers.from_qobuz(resp)
 
-        bit_depth = typed(resp.get("maximum_bit_depth", -1), int)
-        sampling_rate = typed(resp.get("maximum_sampling_rate", -1.0), int | float)
+        bit_depth = typed(resp.get("maximum_bit_depth"), int | None)
+        sampling_rate = typed(resp.get("maximum_sampling_rate"), int | float | None)
         quality = get_quality_id(bit_depth, sampling_rate)
         # Make sure it is non-empty list
         booklets = typed(resp.get("goodies", None) or None, list | None)
-        item_id = str(resp.get("qobuz_id"))
+        # `qobuz_id` is a separate internal number, not the public album URL ID.
+        item_id = str(resp["id"])
 
         if sampling_rate and bit_depth:
             container = "FLAC"
@@ -156,6 +190,10 @@ class AlbumMetadata:
             lyrics=None,
             purchase_date=None,
             tracktotal=tracktotal,
+            albumartists=albumartists,
+            barcode=text(resp.get("upc")),
+            originaldate=originaldate,
+            qobuz_album_id=item_id,
         )
 
     @classmethod
