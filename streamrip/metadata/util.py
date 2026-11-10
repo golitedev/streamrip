@@ -1,4 +1,5 @@
 import functools
+import re
 from typing import Optional, Type, TypeVar
 
 
@@ -18,6 +19,13 @@ def safe_get(dictionary, *keys, default=None):
 
 
 T = TypeVar("T")
+
+
+def format_copyright(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = re.sub(r"(?i)\(P\)", "\u2117", value)
+    return re.sub(r"(?i)\(C\)", "\u00a9", value)
 
 
 def typed(thing, expected_type: Type[T]) -> T:

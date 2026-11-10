@@ -1,8 +1,11 @@
 """Interpret Qobuz credits without splitting display names into invented artists."""
 
 import logging
+import math
 import re
+import unicodedata
 from datetime import date
+from decimal import Decimal
 
 logger = logging.getLogger("streamrip")
 
@@ -35,6 +38,10 @@ ROLE_TAGS = {
     "author": ("writer",),
     "remix": ("remixer",),
     "director": ("director",),
+    "coarranger": ("arranger",),
+    "musicdirector": ("director",),
+    "musicdirectorconductor": ("director", "conductor"),
+    "remixingengineer": ("engineer",),
 }
 PERFORMER_ROLES = {
     "performer",
@@ -109,6 +116,19 @@ PERFORMER_ROLES = {
     "vocoder",
     "speaker",
     "dj",
+    "melodica",
+    "clapping",
+    "mezzosopranovocals",
+    "secondvocals",
+    "treble",
+    "bassbaritonevocals",
+    "boysoprano",
+    "vocalaccompaniment",
+    "spokenvoice",
+    "voicesamples",
+    "fiddle",
+    "guitaranytype",
+    "interprete",
 }
 # These establish credit boundaries but must not become performing artists.
 KNOWN_ROLES = (
@@ -145,6 +165,18 @@ KNOWN_ROLES = (
         "voiceeditor",
         "additionalproduction",
         "synthesizerprogrammer",
+        "assistantproducer",
+        "artdirector",
+        "directorharpsichord",
+        "participant",
+        "productionmanager",
+        "rhythmprogrammer",
+        "additionalprogrammer",
+        "chorusmaster",
+        "postproducer",
+        "assistant",
+        "samples",
+        "contributor",
     }
 )
 
@@ -166,7 +198,13 @@ def unique_names(values) -> list[str]:
 
 
 def role_key(value: str) -> str:
-    return re.sub(r"[^a-z]", "", value.casefold())
+    return re.sub(r"[^a-z]", "", unicodedata.normalize("NFKD", value).casefold())
+
+
+def name_key(value: str) -> str:
+    """Match spelling/case/diacritic variants against supplied structured names."""
+    value = unicodedata.normalize("NFKD", value).casefold()
+    return " ".join("".join(c for c in value if not unicodedata.combining(c)).split())
 
 
 def artist_credit(main: list[str], featured: list[str]) -> str:
@@ -197,12 +235,15 @@ def structured_artists(entries) -> tuple[list[str], list[str]]:
     return unique_names(main), unique_names(featured)
 
 
-def contributor_credits(raw, known_names=()) -> dict[str, list[str]]:
+def contributor_credits(
+    raw, known_names=(), *, artist_names=()
+) -> dict[str, list[str]]:
     """Use explicit role suffixes; ambiguous names/unknown suffixes are omitted."""
     credits: dict[str, list[str]] = {}
     if not isinstance(raw, str):
         return credits
     anchors = sorted(unique_names(known_names), key=len, reverse=True)
+    corroborated_artists = {name_key(n) for n in unique_names(artist_names)}
     # Protect structured names that themselves contain Qobuz's credit separator.
     protected = raw
     replacements = {}
@@ -221,14 +262,18 @@ def contributor_credits(raw, known_names=()) -> dict[str, list[str]]:
         for marker, name in replacements.items():
             segment = segment.replace(marker, name)
         segment = segment.strip()
-        anchored = next(
-            (
-                name
-                for name in anchors
-                if segment[: len(name) + 2].casefold() == (name + ", ").casefold()
-            ),
-            None,
-        )
+        parts = [p.strip() for p in segment.split(",")]
+        anchored = None
+        boundary = None
+        for candidate in anchors:
+            size = candidate.count(",") + 1
+            if (
+                len(parts) > size
+                and name_key(", ".join(parts[:size])) == name_key(candidate)
+                and role_key(parts[size]) in KNOWN_ROLES
+            ):
+                anchored, boundary = candidate, size
+                break
         # An unanchored name containing " - " cannot safely be distinguished
         # from a credit separator. Do not turn its last word into an artist.
         if "," not in segment:
@@ -242,9 +287,8 @@ def contributor_credits(raw, known_names=()) -> dict[str, list[str]]:
         dangling_name = False
         if anchored:
             name = anchored
-            roles = [p.strip() for p in segment[len(name) + 2 :].split(",")]
+            roles = parts[boundary:]
         else:
-            parts = [p.strip() for p in segment.split(",")]
             boundary = next(
                 (i for i in range(1, len(parts)) if role_key(parts[i]) in KNOWN_ROLES),
                 None,
@@ -254,13 +298,19 @@ def contributor_credits(raw, known_names=()) -> dict[str, list[str]]:
                 continue
             name, roles = parts[0], parts[1:]
             name = next(
-                (known for known in anchors if name.casefold() == known.casefold()),
+                (known for known in anchors if name_key(name) == name_key(known)),
                 name,
             )
         if not name:
             continue
         for role in roles:
             key = role_key(role)
+            if key == "mainartist" and role.strip().casefold() != "mainartist":
+                # Legacy "Main Artist" credits can include engineers and writers.
+                # Only structured artist fields can corroborate those entries;
+                # a structured composer name establishes no artist credit.
+                credits.setdefault("legacy_main", []).append(name)
+                continue
             for tag in ROLE_TAGS.get(key, ()):
                 credits.setdefault(tag, []).append(name)
             if key in PERFORMER_ROLES:
@@ -270,7 +320,41 @@ def contributor_credits(raw, known_names=()) -> dict[str, list[str]]:
                     else f"{name} ({role})"
                 )
                 credits.setdefault("performer", []).append(value)
+    legacy = credits.pop("legacy_main", [])
+    for name in legacy:
+        if name_key(name) in corroborated_artists:
+            credits.setdefault("main", []).append(name)
+        else:
+            logger.debug("Uncorroborated Qobuz legacy main artist: %s", name)
+    # A specific featured credit takes precedence over a broad main-artist role.
+    featured = {name_key(n) for n in credits.get("featured", [])}
+    if "main" in credits:
+        credits["main"] = [n for n in credits["main"] if name_key(n) not in featured]
     return {tag: unique_names(names) for tag, names in credits.items()}
+
+
+def replaygain_tags(audio_info) -> dict[str, str]:
+    """Copy supplied finite ReplayGain values; never calculate or invent gains."""
+    tags = {}
+    if not isinstance(audio_info, dict):
+        return tags
+    for scope in ("track", "album"):
+        for kind in ("gain", "peak"):
+            key = f"replaygain_{scope}_{kind}"
+            value = audio_info.get(key)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or (kind == "peak" and value < 0)
+            ):
+                continue
+            tags[key] = (
+                f"{value:.2f} dB"
+                if kind == "gain"
+                else format(Decimal(str(value)), "f")
+            )
+    return tags
 
 
 def with_version(title: str, version) -> str:

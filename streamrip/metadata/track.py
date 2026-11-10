@@ -8,6 +8,7 @@ from .album import AlbumMetadata
 from .qobuz import (
     artist_credit,
     contributor_credits,
+    replaygain_tags,
     structured_artists,
     text,
     unique_names,
@@ -45,6 +46,8 @@ class TrackMetadata:
     credits: dict[str, list[str]] = field(default_factory=dict)
     qobuz_track_id: str | None = None
     itunesadvisory: str | None = None
+    copyright: str | None = None
+    replaygain: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_qobuz(cls, album: AlbumMetadata, resp: dict) -> TrackMetadata | None:
@@ -68,6 +71,7 @@ class TrackMetadata:
         credits = contributor_credits(
             resp.get("performers"),
             [primary, composer, *album.albumartists, *main, *featured],
+            artist_names=[primary, *album.albumartists, *main, *featured],
         )
         parsed_main = credits.pop("main", [])
         parsed_featured = credits.pop("featured", [])
@@ -117,6 +121,8 @@ class TrackMetadata:
             else "0"
             if warning is False
             else None,
+            copyright=text(resp.get("copyright")),
+            replaygain=replaygain_tags(resp.get("audio_info")),
         )
 
     @classmethod

@@ -76,7 +76,12 @@ class Track(Media):
         if self.is_single:
             remove_title(self.meta.title)
 
-        await tag_file(self.download_path, self.meta, self.cover_path)
+        await tag_file(
+            self.download_path,
+            self.meta,
+            self.cover_path,
+            exclude=self.config.session.metadata.exclude,
+        )
         if self.config.session.conversion.enabled:
             await self._convert()
 

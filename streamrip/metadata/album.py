@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -15,7 +14,7 @@ from .qobuz import (
     unique_names,
     with_version,
 )
-from .util import get_quality_id, safe_get, typed
+from .util import format_copyright, get_quality_id, safe_get, typed
 
 PHON_COPYRIGHT = "\u2117"
 COPYRIGHT = "\u00a9"
@@ -64,12 +63,7 @@ class AlbumMetadata:
         return ", ".join(self.genre)
 
     def get_copyright(self) -> str | None:
-        if self.copyright is None:
-            return None
-        # Add special chars
-        _copyright = re.sub(r"(?i)\(P\)", PHON_COPYRIGHT, self.copyright)
-        _copyright = re.sub(r"(?i)\(C\)", COPYRIGHT, _copyright)
-        return _copyright
+        return format_copyright(self.copyright)
 
     def format_folder_path(self, formatter: str) -> str:
         # Available keys: "albumartist", "title", "year", "bit_depth", "sampling_rate",

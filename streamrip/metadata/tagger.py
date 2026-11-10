@@ -13,6 +13,7 @@ from mutagen.id3 import (
 from mutagen.mp4 import MP4, MP4Cover
 
 from .track import TrackMetadata
+from .util import format_copyright
 
 logger = logging.getLogger("streamrip")
 
@@ -130,19 +131,22 @@ class Container(Enum):
         # unreachable
         return {}
 
-    def get_tag_pairs(self, meta) -> list[tuple]:
+    def get_tag_pairs(self, meta, exclude=()) -> list[tuple]:
+        excluded = {name.casefold() for name in exclude}
         if self == Container.FLAC:
-            return self._tag_flac(meta)
+            return self._tag_flac(meta, excluded)
         elif self == Container.MP3:
-            return self._tag_mp3(meta)
+            return self._tag_mp3(meta, excluded)
         elif self == Container.AAC:
-            return self._tag_mp4(meta)
+            return self._tag_mp4(meta, excluded)
         # unreachable
         return []
 
-    def _tag_flac(self, meta: TrackMetadata) -> list[tuple]:
+    def _tag_flac(self, meta: TrackMetadata, excluded=frozenset()) -> list[tuple]:
         out = []
         for k, v in FLAC_KEY.items():
+            if k in excluded:
+                continue
             tag = self._attr_from_meta(meta, k)
             if tag:
                 if k in {
@@ -155,15 +159,22 @@ class Container(Enum):
 
                 out.append((v, tag if isinstance(tag, list) else str(tag)))
         for key, values in meta.credits.items():
-            if values:
+            if values and key not in excluded:
                 # Replace the display composer with individual credited names.
                 out = [(k, v) for k, v in out if k != key.upper()]
                 out.append((key.upper(), values))
+        out.extend(
+            (key.upper(), value)
+            for key, value in meta.replaygain.items()
+            if key not in excluded
+        )
         return out
 
-    def _tag_mp3(self, meta: TrackMetadata):
+    def _tag_mp3(self, meta: TrackMetadata, excluded=frozenset()):
         out = []
         for k, v in MP3_KEY.items():
+            if k in excluded:
+                continue
             if k == "tracknumber":
                 text = f"{meta.tracknumber}/{meta.album.tracktotal}"
             elif k == "discnumber":
@@ -175,9 +186,11 @@ class Container(Enum):
                 out.append((v.__name__, v(encoding=3, text=text)))
         return out
 
-    def _tag_mp4(self, meta: TrackMetadata):
+    def _tag_mp4(self, meta: TrackMetadata, excluded=frozenset()):
         out = []
         for k, v in MP4_KEY.items():
+            if k in excluded:
+                continue
             if k == "tracknumber":
                 text = [(meta.tracknumber, meta.album.tracktotal)]
             elif k == "discnumber":
@@ -199,6 +212,12 @@ class Container(Enum):
             return meta.album.info.label
         if attr == "work":
             return meta.info.work
+        if attr == "copyright":
+            return (
+                format_copyright(meta.copyright)
+                if meta.copyright is not None
+                else meta.album.get_copyright()
+            )
         in_trackmetadata = {
             "title",
             "album",
@@ -224,8 +243,6 @@ class Container(Enum):
                 if meta.album.qobuz_album_id is not None:
                     return meta.album.genre
                 return meta.album.get_genres()
-            elif attr == "copyright":
-                return meta.album.get_copyright()
             val = getattr(meta.album, attr)
             if val is None:
                 return None
@@ -267,7 +284,7 @@ class Container(Enum):
             audio.save(path, "v2_version=3")
 
 
-async def tag_file(path: str, meta: TrackMetadata, cover_path: str | None):
+async def tag_file(path: str, meta: TrackMetadata, cover_path: str | None, exclude=()):
     ext = path.split(".")[-1].lower()
     if ext == "flac":
         container = Container.FLAC
@@ -279,7 +296,7 @@ async def tag_file(path: str, meta: TrackMetadata, cover_path: str | None):
         raise Exception(f"Invalid extension {ext}")
 
     audio = container.get_mutagen_class(path)
-    tags = container.get_tag_pairs(meta)
+    tags = container.get_tag_pairs(meta, exclude)
     logger.debug("Tagging with %s", tags)
     container.tag_audio(audio, tags)
     if cover_path is not None:

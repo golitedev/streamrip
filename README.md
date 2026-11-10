@@ -31,12 +31,17 @@ The FLAC writer also embeds these fields when Qobuz supplies them:
 - `ARTISTS` and `ALBUMARTISTS` as separate Vorbis values, while `ARTIST` and
   `ALBUMARTIST` contain display credits. Explicit main/featured roles determine
   the display credit, including `feat.` where applicable. Producers, composers
-  and other contributors are not promoted to performing artists.
+  and other contributors are not promoted to performing artists. Qobuz's broad
+  legacy `Main Artist` entries require corroboration from structured artist
+  fields, because those entries can include studio staff. Explicit
+  `FeaturedArtist` credits take precedence over a broad main-artist role.
 - Individual values for `COMPOSER`, `LYRICIST`, `WRITER`, `PRODUCER`, `ARRANGER`,
   `CONDUCTOR`, `REMIXER`, `MIXER`, `ENGINEER`, `DIRECTOR` and `PERFORMER`, where
   contributor roles can be interpreted reliably. Instruments/vocal roles are included in
   `PERFORMER` values. Names are not split on commas; ambiguous free-text credits
   are omitted rather than guessed and can be inspected with debug logging.
+  Supplied structured names establish boundaries and preserve capitalization and
+  diacritics; matching a shorter name prefix is not enough to truncate a name.
 - `GENRE` from Qobuz's primary `genre.name`, preserving the upstream fix for
   French genres. The `genres_list` hierarchy can be French and is not used,
   including as a fallback when the primary name is absent. A name such as
@@ -46,6 +51,13 @@ The FLAC writer also embeds these fields when Qobuz supplies them:
   the original date as a fallback. Dates reflect the supplied catalog data;
   a remaster year is not inferred from an edition title. `YEAR` follows `DATE`.
 - `WORK`, separately from the existing work prefix in `TITLE`.
+- `COPYRIGHT` uses the supplied track copyright, falling back to the album
+  copyright when the track has none. Copyright symbols are normalized as before.
+- `REPLAYGAIN_TRACK_GAIN` and `REPLAYGAIN_TRACK_PEAK` from Qobuz's `audio_info`,
+  with gain expressed in dB and peak as a linear value. Only supplied finite
+  numeric values are copied, including valid zero values. Album gain/peak tags
+  are copied only if supplied; no album values are calculated or guessed, and
+  the audio is not normalized or re-encoded.
 - `ITUNESADVISORY=1` for an explicit track and `0` when Qobuz supplies a false
   parental warning. A missing flag is omitted; false does not establish an edited
   clean version (`2`). The track's explicit flag also drives filename formatting.
@@ -56,6 +68,10 @@ The FLAC writer also embeds these fields when Qobuz supplies them:
 Existing ISRC support is retained, and a missing ISRC no longer prevents tagging
 a Qobuz track. The additional tag mappings above apply to FLAC; they do not add
 these new fields to MP3 or AAC output. No external metadata provider is queried.
+The existing `metadata.exclude` setting is now honored during tagging, including
+the added artist, contributor and ReplayGain fields. Exclusion names are case
+insensitive (for example, `description` or `REPLAYGAIN_TRACK_GAIN`). Exclusion
+prevents writing a field; it does not delete pre-existing tags from an input file.
 
 Field names follow the [MusicBrainz Picard Vorbis mappings](https://picard-docs.musicbrainz.org/en/latest/appendices/tag_mapping.html),
 apart from the explicitly named Qobuz custom IDs and the iTunes advisory convention.
