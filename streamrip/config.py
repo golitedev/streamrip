@@ -37,6 +37,9 @@ class QobuzConfig:
     download_booklets: bool
     # Do not change
     secrets: list[str]
+    # Validate downloaded FLAC audio and fill a missing STREAMINFO MD5.
+    verify_flac: bool = True
+    flac_validation_timeout: int = 1800
 
 
 @dataclass(slots=True)

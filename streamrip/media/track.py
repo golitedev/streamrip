@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import os
+import shutil
 from dataclasses import dataclass
+from pathlib import Path
 
 from .. import converter
 from ..client import Client, Downloadable
@@ -9,6 +11,7 @@ from ..config import Config
 from ..db import Database
 from ..exceptions import NonStreamableError
 from ..filepath_utils import clean_filename
+from ..integrity import FlacIntegrityError, validate_flac
 from ..metadata import AlbumMetadata, Covers, TrackMetadata, tag_file
 from ..progress import add_title, get_progress_callback, remove_title
 from .artwork import download_artwork
@@ -37,45 +40,70 @@ class Track(Media):
         if self.is_single:
             add_title(self.meta.title)
 
+    async def rip(self):
+        await self.preprocess()
+        try:
+            await self.download()
+            await self.postprocess()
+        finally:
+            if self.is_single:
+                remove_title(self.meta.title)
+
+    def _verify_flac(self):
+        return (
+            self.downloadable.source == "qobuz"
+            and self.downloadable.extension.lower() == "flac"
+            and self.config.session.qobuz.verify_flac
+        )
+
     async def download(self):
-        # TODO: progress bar description
+        if self._verify_flac() and not shutil.which("flac"):
+            self.db.set_failed(self.downloadable.source, "track", self.meta.info.id)
+            raise FlacIntegrityError(
+                "Qobuz FLAC validation requires the 'flac' executable"
+            )
         async with global_download_semaphore(self.config.session.downloads):
-            with get_progress_callback(
-                self.config.session.cli.progress_bars,
-                await self.downloadable.size(),
-                f"Track {self.meta.tracknumber}",
-            ) as callback:
+            for attempt in range(2):
                 try:
-                    await self.downloadable.download(self.download_path, callback)
-                    retry = False
-                except Exception as e:
-                    logger.error(
-                        f"Error downloading track '{self.meta.title}', retrying: {e}"
+                    with get_progress_callback(
+                        self.config.session.cli.progress_bars,
+                        await self.downloadable.size(),
+                        f"Track {self.meta.tracknumber}"
+                        + (" (retry)" if attempt else ""),
+                    ) as callback:
+                        await self.downloadable.download(self.download_path, callback)
+                    if self._verify_flac():
+                        result = await validate_flac(
+                            self.download_path,
+                            expected_duration=self.meta.info.duration,
+                            timeout=self.config.session.qobuz.flac_validation_timeout,
+                        )
+                        if result.repaired:
+                            logger.info("Filled missing FLAC MD5: %s", self.meta.title)
+                    return
+                except asyncio.CancelledError:
+                    await asyncio.to_thread(
+                        Path(self.download_path).unlink, missing_ok=True
                     )
-                    retry = True
-
-            if not retry:
-                return
-
-            with get_progress_callback(
-                self.config.session.cli.progress_bars,
-                await self.downloadable.size(),
-                f"Track {self.meta.tracknumber} (retry)",
-            ) as callback:
-                try:
-                    await self.downloadable.download(self.download_path, callback)
-                except Exception as e:
-                    logger.error(
-                        f"Persistent error downloading track '{self.meta.title}', skipping: {e}"
+                    raise
+                except Exception as exc:
+                    await asyncio.to_thread(
+                        Path(self.download_path).unlink, missing_ok=True
                     )
-                    self.db.set_failed(
-                        self.downloadable.source, "track", self.meta.info.id
-                    )
+                    if not attempt:
+                        logger.warning(
+                            "Error downloading track %r, retrying: %s",
+                            self.meta.title,
+                            exc,
+                        )
+                    else:
+                        self.db.set_failed(
+                            self.downloadable.source, "track", self.meta.info.id
+                        )
+                        logger.error("Track %r failed: %s", self.meta.title, exc)
+                        raise
 
     async def postprocess(self):
-        if self.is_single:
-            remove_title(self.meta.title)
-
         await tag_file(
             self.download_path,
             self.meta,

@@ -87,6 +87,26 @@ prevents writing a field; it does not delete pre-existing tags from an input fil
 Field names follow the [MusicBrainz Picard Vorbis mappings](https://picard-docs.musicbrainz.org/en/latest/appendices/tag_mapping.html),
 apart from the explicitly named Qobuz custom IDs and the iTunes advisory convention.
 
+## Qobuz FLAC integrity
+
+Qobuz FLAC downloads are decoded and verified before tagging, conversion, or
+being marked downloaded. Missing STREAMINFO MD5 checksums are calculated from
+the decoded PCM and written into the existing 16-byte field. Audio frames are
+not re-encoded. Nonzero checksums are verified and never overwritten. Decoding
+errors, length mismatches, and durations more than three seconds away from the
+supplied catalog duration fail the track. A failed attempt is retried once;
+failed files are removed and are not recorded as downloaded.
+
+Install the `flac` command-line tool separately (for example, `apt install flac`
+on Ubuntu). In the `[qobuz]` config section, `verify_flac = true` enables this
+step and `flac_validation_timeout = 1800` limits each validation to 30 minutes.
+Existing configs use these defaults without migration. Set `verify_flac = false`
+to disable validation and checksum repair. MP3 downloads and other services are
+unaffected by this Qobuz-specific validation setting.
+
+Validation is cancellable and reports decoder errors. The checksum records the
+audio received; it is not a checksum obtained from Qobuz's original master.
+
 ## Installation
 
 First, ensure [Python](https://www.python.org/downloads/) (version 3.10 or greater) and [pip](https://pip.pypa.io/en/stable/installing/) are installed. Then install `ffmpeg`. You may choose not to install this, but some functionality will be limited.

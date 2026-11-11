@@ -26,6 +26,11 @@ verify_ssl = true
 quality = 3
 # This will download booklet pdfs that are included with some albums
 download_booklets = true
+# Decode and validate FLAC downloads before tagging/conversion. Fill missing MD5s
+# without re-encoding. Requires the 'flac' command-line tool; errors fail the track.
+verify_flac = true
+# Maximum seconds for validation of one FLAC, including decoding.
+flac_validation_timeout = 1800
 
 # Authenticate to Qobuz using auth token? Value can be true/false only
 use_auth_token = false

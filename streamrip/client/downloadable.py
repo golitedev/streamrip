@@ -47,13 +47,15 @@ async def fast_async_download(path, url, headers, callback):
     chunk_size: int = 2**17  # 131 KB
     counter = 0
     yield_every = 8  # 1 MB
-    with open(path, "wb") as file:  # noqa: ASYNC101
-        with requests.get(  # noqa: ASYNC100
+    with open(path, "wb") as file:  # noqa: ASYNC230 - legacy Deezer transfer.
+        with requests.get(  # noqa: ASYNC210 - legacy Deezer transfer.
             url,
             headers=headers,
             allow_redirects=True,
             stream=True,
+            timeout=(15, 60),
         ) as resp:
+            resp.raise_for_status()
             for chunk in resp.iter_content(chunk_size=chunk_size):
                 file.write(chunk)
                 callback(len(chunk))
@@ -113,7 +115,13 @@ class BasicDownloadable(Downloadable):
         self.source: str = source or "Unknown"
 
     async def _download(self, path: str, callback):
-        await fast_async_download(path, self.url, self.session.headers, callback)
+        timeout = aiohttp.ClientTimeout(total=None, sock_connect=15, sock_read=60)
+        async with self.session.get(self.url, timeout=timeout) as response:
+            response.raise_for_status()
+            async with aiofiles.open(path, "wb") as output:
+                async for chunk in response.content.iter_chunked(131072):
+                    await output.write(chunk)
+                    callback(len(chunk))
 
 
 class DeezerDownloadable(Downloadable):
@@ -396,7 +404,7 @@ async def concat_audio_files(paths: list[str], out: str, ext: str, max_files_ope
     outpaths = [
         os.path.join(
             tempdir,
-            f"__streamrip_ffmpeg_{hash(paths[i*max_files_open])}.{ext}",
+            f"__streamrip_ffmpeg_{hash(paths[i * max_files_open])}.{ext}",
         )
         for i in range(num_batches)
     ]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -29,6 +30,7 @@ class TrackInfo:
     explicit: bool = False
     sampling_rate: Optional[int | float] = None
     work: Optional[str] = None
+    duration: float | None = None
 
 
 @dataclass(slots=True)
@@ -94,6 +96,14 @@ class TrackMetadata:
         sampling_rate = typed(resp.get("maximum_sampling_rate"), int | float | None)
         warning = resp.get("parental_warning")
         explicit = warning is True
+        duration = resp.get("duration")
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or not math.isfinite(duration)
+            or duration <= 0
+        ):
+            duration = None
 
         info = TrackInfo(
             id=track_id,
@@ -102,6 +112,7 @@ class TrackMetadata:
             explicit=explicit,
             sampling_rate=sampling_rate,
             work=work,
+            duration=duration,
         )
         return cls(
             info=info,
