@@ -8,6 +8,7 @@ from ..filepath_utils import clean_filename, clean_filepath
 from .covers import Covers
 from .qobuz import (
     artist_credit,
+    name_key,
     release_date,
     structured_artists,
     text,
@@ -110,8 +111,7 @@ class AlbumMetadata:
             primary = text(safe_get(resp, "artist", "name"))
             main = (
                 [primary]
-                if primary
-                and primary.casefold() not in {n.casefold() for n in featured}
+                if primary and name_key(primary) not in {name_key(n) for n in featured}
                 else []
             )
         albumartists = unique_names([*main, *featured])

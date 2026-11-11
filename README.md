@@ -34,7 +34,9 @@ The FLAC writer also embeds these fields when Qobuz supplies them:
   and other contributors are not promoted to performing artists. Qobuz's broad
   legacy `Main Artist` entries require corroboration from structured artist
   fields, because those entries can include studio staff. Explicit
-  `FeaturedArtist` credits take precedence over a broad main-artist role.
+  featured credits take precedence over a broad main-artist role, including
+  across structured and free-text credits. Explicit featured names from both
+  sources are retained.
 - Individual values for `COMPOSER`, `LYRICIST`, `WRITER`, `PRODUCER`, `ARRANGER`,
   `CONDUCTOR`, `REMIXER`, `MIXER`, `ENGINEER`, `DIRECTOR` and `PERFORMER`, where
   contributor roles can be interpreted reliably. Instruments/vocal roles are included in

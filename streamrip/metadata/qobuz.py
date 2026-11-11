@@ -300,12 +300,9 @@ def name_key(value: str) -> str:
 
 
 def artist_credit(main: list[str], featured: list[str]) -> str:
-    main = unique_names(main)
-    featured = [
-        n
-        for n in unique_names(featured)
-        if n.casefold() not in {v.casefold() for v in main}
-    ]
+    featured = unique_names(featured)
+    featured_keys = {name_key(n) for n in featured}
+    main = [n for n in unique_names(main) if name_key(n) not in featured_keys]
     if main and featured:
         return ", ".join(main) + " feat. " + ", ".join(featured)
     return ", ".join(main or featured)
@@ -320,11 +317,15 @@ def structured_artists(entries) -> tuple[list[str], list[str]]:
         if isinstance(roles, str):
             roles = [roles]
         keys = {role_key(r) for r in roles if isinstance(r, str)}
-        if not keys or "mainartist" in keys:
-            main.append(entry["name"])
-        elif "featuredartist" in keys:
+        if "featuredartist" in keys:
             featured.append(entry["name"])
-    return unique_names(main), unique_names(featured)
+        elif not keys or "mainartist" in keys:
+            main.append(entry["name"])
+    featured_keys = {name_key(n) for n in featured}
+    return (
+        unique_names(n for n in main if name_key(n) not in featured_keys),
+        unique_names(featured),
+    )
 
 
 def contributor_credits(
@@ -359,6 +360,8 @@ def contributor_credits(
         boundary = None
         for candidate in anchors:
             size = candidate.count(",") + 1
+            # An unknown token here could be another component of a name such
+            # as "Smith, Jane", rather than a role. Do not truncate that name.
             if (
                 len(parts) > size
                 and name_key(", ".join(parts[:size])) == name_key(candidate)

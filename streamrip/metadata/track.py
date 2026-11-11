@@ -8,6 +8,7 @@ from .album import AlbumMetadata
 from .qobuz import (
     artist_credit,
     contributor_credits,
+    name_key,
     replaygain_tags,
     structured_artists,
     text,
@@ -76,12 +77,12 @@ class TrackMetadata:
         parsed_main = credits.pop("main", [])
         parsed_featured = credits.pop("featured", [])
         main = main or parsed_main
-        featured = featured or parsed_featured
-        if (
-            not main
-            and primary
-            and primary.casefold() not in {n.casefold() for n in featured}
-        ):
+        # Keep all explicit featured credits and give them precedence over broad
+        # main-artist entries, including spelling variants of the same name.
+        featured = unique_names([*featured, *parsed_featured])
+        featured_keys = {name_key(n) for n in featured}
+        main = [n for n in main if name_key(n) not in featured_keys]
+        if not main and primary and name_key(primary) not in featured_keys:
             main = [primary]
         artists = unique_names([*main, *featured])
         artist = artist_credit(main, featured) or primary or album.albumartist
