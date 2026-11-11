@@ -42,6 +42,15 @@ The FLAC writer also embeds these fields when Qobuz supplies them:
   are omitted rather than guessed and can be inspected with debug logging.
   Supplied structured names establish boundaries and preserve capitalization and
   diacritics; matching a shorter name prefix is not enough to truncate a name.
+  String/horn arrangers and orchestrators use `ARRANGER`; mastering and assistant
+  engineering credits use `ENGINEER`. Studio musicians, instruments and programming
+  use `PERFORMER`. These credits do not add people to `ARTISTS` or `ALBUMARTISTS`.
+  At a recognized name/role boundary, an unsupported role no longer discards the
+  same person's supported credits. Partly understood free-text artist credits
+  still require corroboration from structured artist names.
+  Publishers, administrative roles and ambiguous comma-containing names are not
+  forced into unrelated tags; unresolved credits/roles are logged at debug level.
+  In particular, a music publisher is not substituted for the record `LABEL`.
 - `GENRE` from Qobuz's primary `genre.name`, preserving the upstream fix for
   French genres. The `genres_list` hierarchy can be French and is not used,
   including as a fallback when the primary name is absent. A name such as

@@ -42,6 +42,52 @@ ROLE_TAGS = {
     "musicdirector": ("director",),
     "musicdirectorconductor": ("director", "conductor"),
     "remixingengineer": ("engineer",),
+    "stringarranger": ("arranger",),
+    "stringsarranger": ("arranger",),
+    "hornarranger": ("arranger",),
+    "hornsarranger": ("arranger",),
+    "guitararranger": ("arranger",),
+    "orchestrator": ("arranger",),
+    "additionalstudioproducer": ("producer",),
+    "associateproducer": ("producer",),
+    "assistantproducer": ("producer",),
+    "recordingproducer": ("producer",),
+    "vocalproducer": ("producer",),
+    "additionalproduction": ("producer",),
+    "codirector": ("director",),
+    "audiorecordingengineer": ("engineer",),
+    "masteringengineer": ("engineer",),
+    "masterer": ("engineer",),
+    "remasteringengineer": ("engineer",),
+    "assistantengineer": ("engineer",),
+    "assistantrecordingengineer": ("engineer",),
+    "asstrecordingengineer": ("engineer",),
+    "assistantadditionalrecordingengineer": ("engineer",),
+    "assistantmasteringengineer": ("engineer",),
+    "recordingsecondengineer": ("engineer",),
+    "masteringsecondengineer": ("engineer",),
+    "secondengineer": ("engineer",),
+    "ndengineer": ("engineer",),  # Qobuz's "2nd Engineer", after role_key.
+    "chiefengineer": ("engineer",),
+    "studioengineer": ("engineer",),
+    "vocalengineer": ("engineer",),
+    "vocalrecordingengineer": ("engineer",),
+    "stringrecordingengineer": ("engineer",),
+    "hornsengineer": ("engineer",),
+    "assistantstringsengineer": ("engineer",),
+    "overdubengineer": ("engineer",),
+    "programmingengineer": ("engineer",),
+    "digitaleditingengineer": ("engineer",),
+    "vocaleditingengineer": ("engineer",),
+    "mixengineer": ("mixer",),
+    "comixingengineer": ("mixer",),
+    "additionalmixingengineer": ("mixer",),
+    "assistantmixingengineer": ("engineer",),
+    "assistantmixengineer": ("engineer",),
+    "assistantmixer": ("engineer",),
+    "mixingsecondengineer": ("engineer",),
+    "remixingsecondengineer": ("engineer",),
+    "engineermixer": ("engineer", "mixer"),
 }
 PERFORMER_ROLES = {
     "performer",
@@ -129,8 +175,71 @@ PERFORMER_ROLES = {
     "fiddle",
     "guitaranytype",
     "interprete",
+    "studiomusician",
+    "additionalmusicians",
+    "instruments",
+    "ukulele",
+    "mandolin",
+    "mandola",
+    "dobro",
+    "steelguitar",
+    "pedalsteelguitar",
+    "lapsteelguitar",
+    "rhythmguitar",
+    "leadguitar",
+    "acousticbaritoneguitar",
+    "requintoguitar",
+    "acousticbass",
+    "acousticcello",
+    "violoncello",
+    "oboe",
+    "bassoon",
+    "horn",
+    "horns",
+    "frenchhorn",
+    "brass",
+    "tuba",
+    "flugelhorn",
+    "cornet",
+    "altosaxophone",
+    "tenorsaxophone",
+    "baritonesaxophone",
+    "leadviolin",
+    "additionalkeyboards",
+    "additionalpiano",
+    "hammondorgan",
+    "cembalo",
+    "bandoneon",
+    "acordeon",
+    "vocalensemble",
+    "rapperformedby",
+    "claps",
+    "bongos",
+    "congas",
+    "guiro",
+    "bells",
+    "timbales",
+    "tambourine",
+    "triangle",
+    "timpani",
+    "marimba",
+    "maracas",
+    "shaker",
+    "shekere",
+    "snaredrum",
+    "bassdrum",
+    "programmer",
+    "programming",
+    "drumprogrammer",
+    "drumprogramming",
+    "keyboardsprogrammer",
+    "keyboardsprogramming",
+    "synthesizerprogrammer",
+    "synthesizerprogramming",
+    "rhythmprogrammer",
+    "additionalprogrammer",
 }
-# These establish credit boundaries but must not become performing artists.
+# Additional roles establish boundaries without implying a performing artist.
 KNOWN_ROLES = (
     set(ROLE_TAGS)
     | PERFORMER_ROLES
@@ -138,40 +247,23 @@ KNOWN_ROLES = (
         "musicpublisher",
         "publisher",
         "executiveproducer",
-        "vocalproducer",
-        "masteringengineer",
-        "recordingsecondengineer",
-        "assistantengineer",
-        "assistantrecordingengineer",
-        "assistantmixingengineer",
         "studiopersonnel",
-        "programmer",
-        "programming",
         "production",
         "other",
         "artist",
-        "masterer",
         "beats",
         "musicproduction",
-        "programmingengineer",
         "digitaleditor",
         "sampledartist",
-        "drumprogrammer",
         "graphicdesign",
         "adapter",
         "videowriter",
         "unknown",
-        "keyboardsprogrammer",
         "voiceeditor",
-        "additionalproduction",
-        "synthesizerprogrammer",
-        "assistantproducer",
         "artdirector",
         "directorharpsichord",
         "participant",
         "productionmanager",
-        "rhythmprogrammer",
-        "additionalprogrammer",
         "chorusmaster",
         "postproducer",
         "assistant",
@@ -238,7 +330,7 @@ def structured_artists(entries) -> tuple[list[str], list[str]]:
 def contributor_credits(
     raw, known_names=(), *, artist_names=()
 ) -> dict[str, list[str]]:
-    """Use explicit role suffixes; ambiguous names/unknown suffixes are omitted."""
+    """Keep supported roles at a known name boundary; never guess artist names."""
     credits: dict[str, list[str]] = {}
     if not isinstance(raw, str):
         return credits
@@ -293,7 +385,7 @@ def contributor_credits(
                 (i for i in range(1, len(parts)) if role_key(parts[i]) in KNOWN_ROLES),
                 None,
             )
-            if boundary != 1 or any(role_key(p) not in KNOWN_ROLES for p in parts[1:]):
+            if boundary != 1:
                 logger.debug("Unparsed Qobuz contributor credit: %s", segment)
                 continue
             name, roles = parts[0], parts[1:]
@@ -303,13 +395,26 @@ def contributor_credits(
             )
         if not name:
             continue
+        unknown_roles = any(role_key(role) not in KNOWN_ROLES for role in roles)
         for role in roles:
             key = role_key(role)
+            if key not in ROLE_TAGS and key not in PERFORMER_ROLES:
+                logger.debug("Unmapped Qobuz contributor role: %s (%s)", role, name)
+                continue
             if key == "mainartist" and role.strip().casefold() != "mainartist":
                 # Legacy "Main Artist" credits can include engineers and writers.
                 # Only structured artist fields can corroborate those entries;
                 # a structured composer name establishes no artist credit.
                 credits.setdefault("legacy_main", []).append(name)
+                continue
+            if (
+                key in {"mainartist", "featuredartist"}
+                and unknown_roles
+                and name_key(name) not in corroborated_artists
+            ):
+                # Preserve engineering/writing credits without promoting an
+                # ambiguous, partly understood free-text name to an artist.
+                logger.debug("Ambiguous Qobuz artist credit: %s", segment)
                 continue
             for tag in ROLE_TAGS.get(key, ()):
                 credits.setdefault(tag, []).append(name)
