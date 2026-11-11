@@ -64,6 +64,13 @@ def test_versions(title, version, expected):
             {"main": ["Jane"], "featured": ["Guest"]},
         ),
         ("Jane, Guitar", {"performer": ["Jane (Guitar)"]}),
+        ("Jane, Live Recording Engineer", {"engineer": ["Jane"]}),
+        ("Jane, Audio Restoration", {"engineer": ["Jane"]}),
+        ("Jane, Turntables", {"performer": ["Jane (Turntables)"]}),
+        (
+            "Jane, Live Recording Engineer, Main Artist",
+            {"engineer": ["Jane"]},
+        ),
     ],
 )
 def test_credits(raw, expected):
