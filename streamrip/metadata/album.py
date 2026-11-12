@@ -8,6 +8,7 @@ from ..filepath_utils import clean_filename, clean_filepath
 from .covers import Covers
 from .qobuz import (
     artist_credit,
+    description_text,
     name_key,
     release_date,
     structured_artists,
@@ -122,7 +123,7 @@ class AlbumMetadata:
         if isinstance(_label, dict):
             _label = _label.get("name")
         label = text(_label)
-        description = text(resp.get("description")) or ""
+        description = description_text(resp.get("description"))
         disctotal = max(
             [
                 resp.get("media_count") or 1,

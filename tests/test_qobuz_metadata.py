@@ -9,6 +9,7 @@ from mutagen.flac import FLAC
 from streamrip.metadata import AlbumMetadata, TrackMetadata, tag_file
 from streamrip.metadata.qobuz import (
     contributor_credits,
+    description_text,
     release_date,
     replaygain_tags,
     structured_artists,
@@ -22,6 +23,73 @@ with open("tests/qobuz_track_resp.json") as f:
 def metadata(resp=None):
     resp = copy.deepcopy(BASE if resp is None else resp)
     return TrackMetadata.from_qobuz(AlbumMetadata.from_qobuz(resp["album"]), resp)
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (None, ""),
+        (42, ""),
+        ("", ""),
+        ("<p><br /></p><!-- No review -->", ""),
+        (
+            "Already plain text. © Reviewer/Qobuz",
+            "Already plain text. © Reviewer/Qobuz",
+        ),
+        (
+            "First paragraph.\n\nSecond paragraph.",
+            "First paragraph.\n\nSecond paragraph.",
+        ),
+        (
+            '<p data-path-to-node="0">Listen to '
+            '<em data-index-in-node="10">The Album</em>.<br /><br />'
+            "A tribute! &copy; Reviewer/Qobuz</p>",
+            "Listen to The Album.\n\nA tribute! © Reviewer/Qobuz",
+        ),
+        (
+            "<div>\n <p>First paragraph.</p>\n <p>Second paragraph.</p>\n</div>",
+            "First paragraph.\n\nSecond paragraph.",
+        ),
+        ("One<br>Two<BR/>Three", "One\nTwo\nThree"),
+        ("<p>Rock&nbsp;&amp;&nbsp;roll &#169; 2024</p>", "Rock & roll © 2024"),
+        ("<p>3 &lt; 5 &amp; 7 &gt; 6</p>", "3 < 5 & 7 > 6"),
+        ("<p>co<em>star</em></p>", "costar"),
+        (
+            '<p><a href="https://example.com">The artist</a> returns.</p>',
+            "The artist returns.",
+        ),
+        ("<ul><li>First</li><li>Second</li></ul>", "First\nSecond"),
+        (
+            "<style>body {color:red}</style><p>Review<!-- hidden --> text."
+            '<script>alert("hidden")</script></p>',
+            "Review text.",
+        ),
+        ("<p>Unclosed <em>markup", "Unclosed markup"),
+    ],
+)
+def test_description_text(raw, expected):
+    assert description_text(raw) == expected
+
+
+def test_plain_description_flac_roundtrip(tmp_path):
+    resp = copy.deepcopy(BASE)
+    resp["album"]["description"] = (
+        '<p data-path-to-node="0">An <em>album</em> review.<br /><br />'
+        "Another paragraph.</p><p>&copy; Reviewer/Qobuz</p>"
+    )
+    path = tmp_path / "description.flac"
+    shutil.copy("tests/silence.flac", path)
+    before_md5 = FLAC(path).info.md5_signature
+    meta = metadata(resp)
+    expected = "An album review.\n\nAnother paragraph.\n\n© Reviewer/Qobuz"
+    assert meta.album.description == expected
+
+    asyncio.run(tag_file(str(path), meta, None))
+
+    audio = FLAC(path)
+    assert audio["description"] == [expected]
+    assert audio["producer"] == ["Trina Shoemaker"]
+    assert audio.info.md5_signature == before_md5
 
 
 @pytest.mark.parametrize(

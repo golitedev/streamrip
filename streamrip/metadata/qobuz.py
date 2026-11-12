@@ -6,6 +6,7 @@ import re
 import unicodedata
 from datetime import date
 from decimal import Decimal
+from html.parser import HTMLParser
 
 logger = logging.getLogger("streamrip")
 
@@ -280,6 +281,78 @@ def text(value) -> str | None:
     if isinstance(value, str):
         return value.strip() or None
     return None
+
+
+class _DescriptionParser(HTMLParser):
+    """Keep review text and paragraph breaks without embedding HTML in tags."""
+
+    _BLOCKS = frozenset(
+        {
+            "article",
+            "blockquote",
+            "div",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "hr",
+            "ol",
+            "p",
+            "pre",
+            "section",
+            "table",
+            "tr",
+            "ul",
+        }
+    )
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.ignored_tag: str | None = None
+
+    def handle_starttag(self, tag, attrs):
+        if self.ignored_tag is not None:
+            return
+        if tag in {"head", "script", "style", "template"}:
+            self.ignored_tag = tag
+        elif tag in self._BLOCKS:
+            self.parts.append("\n\n")
+        elif tag in {"br", "li"}:
+            self.parts.append("\n")
+        elif tag in {"td", "th"}:
+            self.parts.append(" ")
+
+    def handle_endtag(self, tag):
+        if self.ignored_tag is not None:
+            if tag == self.ignored_tag:
+                self.ignored_tag = None
+            return
+        if tag in self._BLOCKS:
+            self.parts.append("\n\n")
+        elif tag in {"td", "th"}:
+            self.parts.append(" ")
+
+    def handle_data(self, data):
+        if self.ignored_tag is None:
+            self.parts.append(data)
+
+
+def description_text(value) -> str:
+    """Convert Qobuz's HTML descriptions to readable, entity-decoded text."""
+    value = text(value)
+    if value is None:
+        return ""
+    parser = _DescriptionParser()
+    parser.feed(value)
+    parser.close()
+    lines = [
+        re.sub(r"[^\S\n]+", " ", line).strip()
+        for line in "".join(parser.parts).splitlines()
+    ]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
 def unique_names(values) -> list[str]:
