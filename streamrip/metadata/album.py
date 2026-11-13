@@ -60,6 +60,7 @@ class AlbumMetadata:
     barcode: str | None = None
     originaldate: str | None = None
     qobuz_album_id: str | None = None
+    version: str = ""
 
     def get_genres(self) -> str:
         return ", ".join(self.genre)
@@ -81,6 +82,13 @@ class AlbumMetadata:
             "title": clean_filename(self.album),
             "year": self.year,
             "container": self.info.container,
+            "format": self.info.container,
+            "album": clean_filename(self.album),
+            "version": clean_filename(self.version),
+            "date": self.date or none_str,
+            "label": clean_filename(self.info.label or none_str),
+            "genre": clean_filename(self.get_genres()),
+            "upc": self.barcode or none_str,
         }
 
         return clean_filepath(formatter.format(**info))
@@ -167,6 +175,7 @@ class AlbumMetadata:
             albumartist,
             year,
             genre=genres,
+            version=text(resp.get("version")) or "",
             covers=cover_urls,
             albumcomposer=albumcomposer,
             comment=None,

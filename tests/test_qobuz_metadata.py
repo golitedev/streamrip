@@ -316,3 +316,14 @@ def test_album_primary_spelling_does_not_duplicate_featured_artist():
     album = AlbumMetadata.from_qobuz(resp)
     assert album.albumartist == "Beyoncé"
     assert album.albumartists == ["Beyoncé"]
+
+
+def test_cineroute_folder_placeholders():
+    import json
+    from pathlib import Path
+    from streamrip.metadata.album import AlbumMetadata
+
+    resp = json.loads((Path(__file__).parent / "qobuz_album_resp.json").read_text())
+    album = AlbumMetadata.from_qobuz(resp)
+    assert album.format_folder_path("{album} [{format}]") == album.format_folder_path("{title} [{container}]")
+    assert album.format_folder_path("{id}") == album.info.id
