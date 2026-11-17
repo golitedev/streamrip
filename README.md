@@ -97,6 +97,7 @@ in Streamrip's `config.toml`:
 download_lyrics = true
 lyrics_mode = "sidecar"   # "sidecar", "embedded", or "both"
 lyrics_synced = true      # prefer timestamps; false requests plain-text output
+lyrics_synced_only = false # true skips untimed lyrics and always uses LRC text
 lyrics_overwrite = false  # preserve existing sidecar files
 ```
 
@@ -118,14 +119,30 @@ write errors are logged or skipped without failing the audio download.
 
 With `lyrics_synced = true`, tracks without usable timestamps fall back to plain
 text. Setting `lyrics_synced = false` produces plain text even when Qobuz supplies
-timings. `metadata.exclude = ["lyrics"]` suppresses both fetching and output.
+timings. To add **only LRC sidecars**, use:
+
+```toml
+[qobuz]
+download_lyrics = true
+lyrics_mode = "sidecar"
+lyrics_synced_only = true
+lyrics_overwrite = false
+```
+
+`lyrics_synced_only = true` skips lyrics without usable timestamps, creates no
+plain-text fallback, and overrides `lyrics_synced` to use LRC text. It works with
+`embedded` and `both` too: untimed lyrics are neither embedded nor saved. Its
+default is `false`, preserving the plain-text fallback described above.
+
+`metadata.exclude = ["lyrics"]` suppresses both fetching and output.
 Existing sidecars are preserved unless `lyrics_overwrite = true`; disabling lyrics
 does not delete existing tags or files. These settings do not change the existing
 lyrics behavior of other providers, and do not backfill already downloaded tracks.
 
 When used inside CineRoute, these options can be passed through its
-`music.streamrip.qobuz` YAML configuration. CineRoute must be rebuilt with a pin to
-this Streamrip commit before that deployment gains the feature.
+`music.streamrip.qobuz` YAML configuration. CineRoute must be rebuilt from this
+Streamrip revision or a newer `dev` revision before that deployment gains the
+feature.
 
 ## Qobuz FLAC integrity
 

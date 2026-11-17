@@ -28,12 +28,15 @@ def config():
 def test_old_configs_default_to_disabled_and_roundtrip(config):
     q = config.session.qobuz
     assert not q.download_lyrics
+    assert not q.lyrics_synced_only
     assert q.lyrics_mode == "sidecar"
     config.file.qobuz.download_lyrics = True
     config.file.qobuz.lyrics_mode = "both"
+    config.file.qobuz.lyrics_synced_only = True
     config.file.update_toml()
     restored = ConfigData.from_toml(config.file.toml.as_string()).qobuz
     assert restored.download_lyrics and restored.lyrics_mode == "both"
+    assert restored.lyrics_synced_only
 
 
 @pytest.mark.parametrize(
@@ -42,6 +45,7 @@ def test_old_configs_default_to_disabled_and_roundtrip(config):
         ("lyrics_mode", "invalid"),
         ("download_lyrics", "yes"),
         ("lyrics_synced", 1),
+        ("lyrics_synced_only", "true"),
         ("lyrics_overwrite", "false"),
     ],
 )
@@ -328,3 +332,45 @@ async def test_all_entrypoints_pass_lyrics_client(config, tmp_path, monkeypatch,
     track = await pending.resolve()
     assert track is not None and track.lyrics_client is client
     client.get_metadata.assert_awaited_once_with("123", "track")
+
+
+@pytest.mark.parametrize("mode", ["sidecar", "embedded", "both"])
+@pytest.mark.parametrize("has_timings", [True, False])
+@pytest.mark.parametrize("prefer_synced", [True, False])
+async def test_synced_only_skips_plain_and_never_writes_txt(
+    track, mode, has_timings, prefer_synced
+):
+    q = track.config.session.qobuz
+    q.lyrics_mode = mode
+    q.lyrics_synced = prefer_synced
+    q.lyrics_synced_only = True
+    track.lyrics_client.get_lyrics.return_value = Lyrics(
+        "Hello", "[00:01.00]Hello" if has_timings else ""
+    )
+    before = FLAC(track.download_path).info.md5_signature
+    await track.postprocess()
+    audio = FLAC(track.download_path)
+    lrc = Path(track.download_path).with_suffix(".lrc")
+    assert not Path(track.download_path).with_suffix(".txt").exists()
+    assert lrc.exists() == (has_timings and mode in {"sidecar", "both"})
+    if lrc.exists():
+        assert lrc.read_text() == "[00:01.00]Hello\n"
+    if has_timings and mode in {"embedded", "both"}:
+        assert audio["lyrics"] == ["[00:01.00]Hello"]
+    else:
+        assert "lyrics" not in audio
+    assert audio.info.md5_signature == before
+    track.db.set_downloaded.assert_called_once()
+
+
+@pytest.mark.parametrize("mode", ["sidecar", "embedded", "both"])
+async def test_plain_fallback_still_works_by_default(track, mode):
+    track.config.session.qobuz.lyrics_mode = mode
+    track.lyrics_client.get_lyrics.return_value = Lyrics("Plain lyrics")
+    await track.postprocess()
+    assert not Path(track.download_path).with_suffix(".lrc").exists()
+    assert Path(track.download_path).with_suffix(".txt").exists() == (
+        mode in {"sidecar", "both"}
+    )
+    if mode in {"embedded", "both"}:
+        assert FLAC(track.download_path)["lyrics"] == ["Plain lyrics"]

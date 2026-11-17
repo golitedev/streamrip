@@ -108,10 +108,11 @@ class Track(Media):
     async def postprocess(self):
         lyrics = await self._fetch_lyrics()
         qobuz = self.config.session.qobuz
+        prefer_synced = qobuz.lyrics_synced or qobuz.lyrics_synced_only
         exclude = list(self.config.session.metadata.exclude)
         if self.downloadable.source == "qobuz":
             if lyrics and qobuz.lyrics_mode in {"embedded", "both"}:
-                self.meta.lyrics = lyrics.text(qobuz.lyrics_synced)
+                self.meta.lyrics = lyrics.text(prefer_synced)
             else:
                 exclude.append("lyrics")
         await tag_file(
@@ -129,7 +130,7 @@ class Track(Media):
                     write_sidecar,
                     self.download_path,
                     lyrics,
-                    qobuz.lyrics_synced,
+                    prefer_synced,
                     qobuz.lyrics_overwrite,
                 )
             except Exception as exc:
@@ -147,7 +148,17 @@ class Track(Media):
         ):
             return None
         try:
-            return await self.lyrics_client.get_lyrics(self.meta.info.id)
+            lyrics = await self.lyrics_client.get_lyrics(self.meta.info.id)
+            if (
+                lyrics
+                and self.config.session.qobuz.lyrics_synced_only
+                and not lyrics.synced
+            ):
+                logger.info(
+                    "Skipping lyrics without timestamps for track %s", self.meta.info.id
+                )
+                return None
+            return lyrics
         except Exception as exc:
             logger.warning(
                 "Could not fetch lyrics for track %s: %s", self.meta.info.id, exc

@@ -43,6 +43,7 @@ class QobuzConfig:
     download_lyrics: bool = False
     lyrics_mode: str = "sidecar"
     lyrics_synced: bool = True
+    lyrics_synced_only: bool = False
     lyrics_overwrite: bool = False
 
     def __post_init__(self):
@@ -52,7 +53,12 @@ class QobuzConfig:
             "both",
         }:
             raise ValueError("qobuz.lyrics_mode must be sidecar, embedded, or both")
-        for name in ("download_lyrics", "lyrics_synced", "lyrics_overwrite"):
+        for name in (
+            "download_lyrics",
+            "lyrics_synced",
+            "lyrics_synced_only",
+            "lyrics_overwrite",
+        ):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"qobuz.{name} must be true or false")
 
