@@ -40,6 +40,21 @@ class QobuzConfig:
     # Validate downloaded FLAC audio and fill a missing STREAMINFO MD5.
     verify_flac: bool = True
     flac_validation_timeout: int = 1800
+    download_lyrics: bool = False
+    lyrics_mode: str = "sidecar"
+    lyrics_synced: bool = True
+    lyrics_overwrite: bool = False
+
+    def __post_init__(self):
+        if not isinstance(self.lyrics_mode, str) or self.lyrics_mode not in {
+            "sidecar",
+            "embedded",
+            "both",
+        }:
+            raise ValueError("qobuz.lyrics_mode must be sidecar, embedded, or both")
+        for name in ("download_lyrics", "lyrics_synced", "lyrics_overwrite"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"qobuz.{name} must be true or false")
 
 
 @dataclass(slots=True)

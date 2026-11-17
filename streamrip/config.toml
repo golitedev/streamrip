@@ -31,6 +31,15 @@ download_booklets = true
 verify_flac = true
 # Maximum seconds for validation of one FLAC, including decoding.
 flac_validation_timeout = 1800
+# Fetch lyrics directly from Qobuz when available. No extra lyrics providers.
+download_lyrics = false
+# "sidecar": matching .lrc/.txt file; "embedded": audio tag; "both": both outputs.
+lyrics_mode = "sidecar"
+# Prefer timestamped LRC text; fall back to plain text when timings are unavailable.
+# Embedded lyrics use the normal LYRICS/USLT tag, not a binary SYLT frame.
+lyrics_synced = true
+# Replace existing lyrics sidecars. false keeps existing .lrc/.txt files untouched.
+lyrics_overwrite = false
 
 # Authenticate to Qobuz using auth token? Value can be true/false only
 use_auth_token = false

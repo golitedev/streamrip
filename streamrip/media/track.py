@@ -6,12 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import converter
-from ..client import Client, Downloadable
+from ..client import Client, Downloadable, QobuzClient
 from ..config import Config
 from ..db import Database
 from ..exceptions import NonStreamableError
 from ..filepath_utils import clean_filename
 from ..integrity import FlacIntegrityError, validate_flac
+from ..lyrics import Lyrics, write_sidecar
 from ..metadata import AlbumMetadata, Covers, TrackMetadata, tag_file
 from ..progress import add_title, get_progress_callback, remove_title
 from .artwork import download_artwork
@@ -33,6 +34,7 @@ class Track(Media):
     # change?
     download_path: str = ""
     is_single: bool = False
+    lyrics_client: QobuzClient | None = None
 
     async def preprocess(self):
         self._set_download_path()
@@ -104,16 +106,53 @@ class Track(Media):
                         raise
 
     async def postprocess(self):
+        lyrics = await self._fetch_lyrics()
+        qobuz = self.config.session.qobuz
+        exclude = list(self.config.session.metadata.exclude)
+        if self.downloadable.source == "qobuz":
+            if lyrics and qobuz.lyrics_mode in {"embedded", "both"}:
+                self.meta.lyrics = lyrics.text(qobuz.lyrics_synced)
+            else:
+                exclude.append("lyrics")
         await tag_file(
             self.download_path,
             self.meta,
             self.cover_path,
-            exclude=self.config.session.metadata.exclude,
+            exclude=exclude,
         )
         if self.config.session.conversion.enabled:
             await self._convert()
 
+        if lyrics and qobuz.lyrics_mode in {"sidecar", "both"}:
+            try:
+                await asyncio.to_thread(
+                    write_sidecar,
+                    self.download_path,
+                    lyrics,
+                    qobuz.lyrics_synced,
+                    qobuz.lyrics_overwrite,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Could not save lyrics for track %s: %s", self.meta.info.id, exc
+                )
         self.db.set_downloaded(self.meta.info.id)
+
+    async def _fetch_lyrics(self) -> Lyrics | None:
+        if (
+            self.downloadable.source != "qobuz"
+            or not self.config.session.qobuz.download_lyrics
+            or self.lyrics_client is None
+            or "lyrics" in {x.casefold() for x in self.config.session.metadata.exclude}
+        ):
+            return None
+        try:
+            return await self.lyrics_client.get_lyrics(self.meta.info.id)
+        except Exception as exc:
+            logger.warning(
+                "Could not fetch lyrics for track %s: %s", self.meta.info.id, exc
+            )
+            return None
 
     async def _convert(self):
         c = self.config.session.conversion
@@ -201,6 +240,7 @@ class PendingTrack(Pending):
             folder,
             self.cover_path,
             self.db,
+            lyrics_client=self.client if isinstance(self.client, QobuzClient) else None,
         )
 
 
@@ -279,6 +319,7 @@ class PendingSingle(Pending):
             embedded_cover_path,
             self.db,
             is_single=True,
+            lyrics_client=self.client if isinstance(self.client, QobuzClient) else None,
         )
 
     def _format_folder(self, meta: AlbumMetadata) -> str:

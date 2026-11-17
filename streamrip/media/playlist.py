@@ -11,7 +11,7 @@ import aiohttp
 from rich.text import Text
 
 from .. import progress
-from ..client import Client
+from ..client import Client, QobuzClient
 from ..config import Config
 from ..console import console
 from ..db import Database
@@ -91,6 +91,7 @@ class PendingPlaylistTrack(Pending):
             self.folder,
             embedded_cover_path,
             self.db,
+            lyrics_client=self.client if isinstance(self.client, QobuzClient) else None,
         )
 
     async def _download_cover(self, covers: Covers, folder: str) -> str | None:
@@ -248,7 +249,7 @@ class PendingLastfmPlaylist(Pending):
         pending_tracks = []
         for pos, (id, from_fallback) in enumerate(results, start=1):
             if id is None:
-                logger.warning(f"No results found for {titles_artists[pos-1]}")
+                logger.warning(f"No results found for {titles_artists[pos - 1]}")
                 continue
 
             if from_fallback:

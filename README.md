@@ -87,6 +87,46 @@ prevents writing a field; it does not delete pre-existing tags from an input fil
 Field names follow the [MusicBrainz Picard Vorbis mappings](https://picard-docs.musicbrainz.org/en/latest/appendices/tag_mapping.html),
 apart from the explicitly named Qobuz custom IDs and the iTunes advisory convention.
 
+## Qobuz lyrics
+
+Qobuz lyrics are optional and disabled by default. Configure them under `[qobuz]`
+in Streamrip's `config.toml`:
+
+```toml
+[qobuz]
+download_lyrics = true
+lyrics_mode = "sidecar"   # "sidecar", "embedded", or "both"
+lyrics_synced = true      # prefer timestamps; false requests plain-text output
+lyrics_overwrite = false  # preserve existing sidecar files
+```
+
+This applies to Qobuz albums, singles, and playlists. Streamrip requests the
+original-language lyrics directly from Qobuz's signed `track/lyricsUrl` endpoint,
+then reads the lyrics document. It does not use an external lyrics provider.
+Availability depends on the track. Unavailable lyrics, network errors, and sidecar
+write errors are logged or skipped without failing the audio download.
+
+- **Sidecar:** saves UTF-8 lyrics beside the final audio file, with the same stem.
+  Timestamped lyrics use `.lrc`; plain text uses `.txt`. For example,
+  `01 - Song.flac` gets `01 - Song.lrc`. Word-synced documents are reduced to
+  line timestamps. Untimed verse separators remain in plain text; lines without
+  timestamps cannot be represented in LRC.
+- **Embedded:** writes the selected plain or LRC text to the normal lyrics tag
+  (`LYRICS` for FLAC, `USLT` for MP3, or the MP4 lyrics field). This does not create
+  a binary ID3 `SYLT` frame.
+- **Both:** embeds lyrics and saves the matching sidecar.
+
+With `lyrics_synced = true`, tracks without usable timestamps fall back to plain
+text. Setting `lyrics_synced = false` produces plain text even when Qobuz supplies
+timings. `metadata.exclude = ["lyrics"]` suppresses both fetching and output.
+Existing sidecars are preserved unless `lyrics_overwrite = true`; disabling lyrics
+does not delete existing tags or files. These settings do not change the existing
+lyrics behavior of other providers, and do not backfill already downloaded tracks.
+
+When used inside CineRoute, these options can be passed through its
+`music.streamrip.qobuz` YAML configuration. CineRoute must be rebuilt with a pin to
+this Streamrip commit before that deployment gains the feature.
+
 ## Qobuz FLAC integrity
 
 Qobuz FLAC downloads are decoded and verified before tagging, conversion, or

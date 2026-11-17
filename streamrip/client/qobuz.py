@@ -18,6 +18,7 @@ from ..exceptions import (
     MissingCredentialsError,
     NonStreamableError,
 )
+from ..lyrics import Lyrics, parse_qobuz_lyrics
 from .client import Client
 from .downloadable import BasicDownloadable, Downloadable
 
@@ -438,6 +439,48 @@ class QobuzClient(Client):
             "intent": "stream",
         }
         return await self._api_request("track/getFileUrl", params)
+
+    async def get_lyrics(self, track_id: str) -> Lyrics | None:
+        """Fetch Qobuz's original lyrics through its signed two-step endpoint."""
+        if not self.logged_in or not self.secret:
+            raise RuntimeError("Log in to Qobuz before requesting lyrics")
+        timestamp = str(int(time.time()))
+        raw = f"tracklyricsUrltrack_id{track_id}{timestamp}{self.secret}"
+        params = {
+            "track_id": track_id,
+            "app_id": str(self.config.session.qobuz.app_id),
+            "request_ts": timestamp,
+            "request_sig": hashlib.md5(raw.encode()).hexdigest(),
+        }
+        # Waiting for the API rate limit must not consume the network timeout.
+        async with self.rate_limiter:
+            async with self.session.get(
+                f"{QOBUZ_BASE_URL}/track/lyricsUrl",
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as response:
+                if response.status in {403, 404}:
+                    return None
+                if response.status != 200:
+                    raise RuntimeError(
+                        f"Qobuz lyrics lookup returned HTTP {response.status}"
+                    )
+                result = await response.json(content_type=None)
+        url = result.get("lyrics_url")
+        if not url:
+            return None
+        # A separate session keeps Qobuz account headers off the CDN request.
+        async with await self.get_session(
+            verify_ssl=self.config.session.downloads.verify_ssl
+        ) as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as r:
+                if r.status in {403, 404}:
+                    return None
+                if r.status != 200:
+                    raise RuntimeError(
+                        f"Qobuz lyrics document returned HTTP {r.status}"
+                    )
+                return parse_qobuz_lyrics(await r.json(content_type=None))
 
     async def _api_request(self, epoint: str, params: dict) -> tuple[int, dict]:
         """Make a request to the API.
