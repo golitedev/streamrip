@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import shutil
-from pathlib import Path
 
 import aiohttp
 from PIL import Image
@@ -16,11 +15,11 @@ _artwork_tempdirs: set[str] = set()
 logger = logging.getLogger("streamrip")
 
 
-def relocate_artwork_tempdir(source: Path, target: Path):
-    old = str(source / "__artwork")
+def relocate_artwork_tempdir(source: str, target: str):
+    old = os.path.join(source, "__artwork")
     if old in _artwork_tempdirs:
         _artwork_tempdirs.remove(old)
-        _artwork_tempdirs.add(str(target / "__artwork"))
+        _artwork_tempdirs.add(os.path.join(target, "__artwork"))
 
 
 def remove_artwork_tempdirs():

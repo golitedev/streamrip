@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,7 +22,8 @@ def album(tmp_path, monkeypatch):
         tracks={"items": [{"id": 123}]},
     )
     config = Config("tests/test_config.toml")
-    config.session.downloads.folder = str(tmp_path / "downloads")
+    monkeypatch.chdir(tmp_path)
+    config.session.downloads.folder = "./downloads"
     config.session.downloads.source_subdirectories = True
     config.session.filepaths.folder_format = "{bit_depth}B-{sampling_rate}kHz/{title}"
     client = SimpleNamespace(
@@ -65,7 +67,8 @@ def test_uses_highest_downloaded_track_and_moves_whole_folder(
     temporary_art = source / "__artwork"
     temporary_art.mkdir()
     monkeypatch.setattr(
-        "streamrip.media.artwork._artwork_tempdirs", {str(temporary_art)}
+        "streamrip.media.artwork._artwork_tempdirs",
+        {os.path.join(album.folder, "__artwork")},
     )
 
     asyncio.run(album.rip())

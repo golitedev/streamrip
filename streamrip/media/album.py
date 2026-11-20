@@ -122,7 +122,7 @@ class Album(Media):
         except OSError as error:
             logger.warning("Cannot rename album folder %s: %s", source, error)
             return
-        relocate_artwork_tempdir(source, target)
+        relocate_artwork_tempdir(self.folder, str(target))
         self.folder = str(target)
 
 
